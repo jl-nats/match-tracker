@@ -32,6 +32,25 @@ type MatchDataResponse struct {
 	MatchData []MatchData `json:"data"`
 }
 
+type MMRData struct {
+	CurrentRR int
+	RRChange  int
+	Tier      string
+}
+
+type MMRDataResponse struct {
+	Status int `json:"status"`
+	Data   struct {
+		Current struct {
+			Tier struct {
+				Name string `json:"name"`
+			} `json:"tier"`
+			RR         int `json:"rr"`
+			LastChange int `json:"last_change"`
+		} `json:"current"`
+	} `json:"data"`
+}
+
 type WebhookData struct {
 	Embeds []Embed `json:"embeds"`
 }

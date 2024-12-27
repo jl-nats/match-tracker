@@ -9,6 +9,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -33,7 +34,7 @@ var DRAW_COLOR = 0x8BACB5
 func CreateEmbedFields(team []Player, label string, totalRounds int) []EmbedField {
 	teamFields := []EmbedField{}
 	teamFields = append(teamFields, EmbedField{
-		Name:   label + " Team",
+		Name:   strings.Title(label) + " Team",
 		Value:  "",
 		Inline: false})
 	for _, player := range team {
@@ -67,7 +68,7 @@ func LessFunc(team []Player) func(i, j int) bool {
 	}
 }
 
-func CreateEmbed(matchData MatchData, trackedPlayerData TrackedPlayerData) Embed {
+func CreateEmbed(matchData MatchData, trackedPlayerData TrackedPlayerData, MMRData MMRData) Embed {
 	var trackedPlayer Player
 	for _, player := range matchData.Players {
 		if player.Name == trackedPlayerData.Name && player.Tag == trackedPlayerData.Tag {
@@ -87,7 +88,7 @@ func CreateEmbed(matchData MatchData, trackedPlayerData TrackedPlayerData) Embed
 
 	embed := Embed{
 		Title:       "🚨   NEW GAME " + trackedPlayerData.Name + "#" + trackedPlayerData.Tag + "   🚨",
-		Description: "**" + matchData.Metadata.Map.Name + "**" + " -- " + gameOutcome + " -- **" + strconv.Itoa(roundsWon) + " : " + strconv.Itoa(roundsLost) + "**\n\n",
+		Description: "**" + matchData.Metadata.Map.Name + "**" + " -- " + gameOutcome + " -- **" + strconv.Itoa(roundsWon) + " : " + strconv.Itoa(roundsLost) + "**\n" + MMRData.Tier + " " + strconv.Itoa(MMRData.CurrentRR) + "RR (" + sign(MMRData.RRChange) + strconv.Itoa(MMRData.RRChange) + ")" + "\n",
 		Fields:      embedFields,
 		URL:         "https://tracker.gg/valorant/match/" + matchData.Metadata.MatchID,
 		Color:       embedColor,
@@ -101,6 +102,13 @@ func CreateEmbed(matchData MatchData, trackedPlayerData TrackedPlayerData) Embed
 		},
 	}
 	return embed
+}
+
+func sign(x int) string {
+	if x < 0 {
+		return "-"
+	}
+	return "+"
 }
 
 func newFunction(matchData MatchData, trackedPlayer Player) (int, int, int, string) {
@@ -143,9 +151,9 @@ func newFunction(matchData MatchData, trackedPlayer Player) (int, int, int, stri
 	return embedColor, roundsWon, roundsLost, gameOutcome
 }
 
-func executeWebhook(webhookURL string, matchData MatchData, trackedPlayerData TrackedPlayerData) {
+func executeWebhook(webhookURL string, matchData MatchData, trackedPlayerData TrackedPlayerData, MMRData MMRData) {
 	var webhookData WebhookData = WebhookData{
-		Embeds: []Embed{CreateEmbed(matchData, trackedPlayerData)},
+		Embeds: []Embed{CreateEmbed(matchData, trackedPlayerData, MMRData)},
 	}
 	jsonData, err := json.Marshal(webhookData)
 	if err != nil {
@@ -217,30 +225,59 @@ func main() {
 
 	apiUrl := createUrl(playerData)
 
-	req, err := http.NewRequest("GET", apiUrl, nil)
+	matchReq, err := http.NewRequest("GET", apiUrl, nil)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	req.Header.Add("Authorization", API_KEY)
+	matchReq.Header.Add("Authorization", API_KEY)
 
 	log.Println("Server Started")
 	var lastMatchID string
 
 	for {
 		log.Println("Checking match data...")
-		matchData := getMatchData(client, req)
+		matchData := getMatchData(client, matchReq)
 
 		if matchData.Metadata.MatchID == lastMatchID {
 			log.Println("No new match data found")
 		} else {
 			lastMatchID = matchData.Metadata.MatchID
 			log.Println("New match found. Executing webhook...")
-			executeWebhook(WEBHOOK_URL, matchData, playerData)
+			mmrApiUrl := "https://api.henrikdev.xyz/valorant/v3/mmr/" + playerData.Region + "/" + playerData.Platform + "/" + playerData.Name + "/" + playerData.Tag
+			mmrReq, err := http.NewRequest("GET", mmrApiUrl, nil)
+			if err != nil {
+				log.Fatal(err)
+			}
+			mmrReq.Header.Add("Authorization", API_KEY)
+			MMRData := getMMRData(client, mmrReq)
+			executeWebhook(WEBHOOK_URL, matchData, playerData, MMRData)
 		}
 
 		time.Sleep(10 * time.Second)
 
+	}
+}
+
+func getMMRData(client *http.Client, req *http.Request) MMRData {
+	res, err := client.Do(req)
+	if err != nil {
+		log.Println("Error making HD API request:", err)
+	}
+	defer res.Body.Close()
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		log.Println("Error reading HD API response body:", err)
+	}
+
+	var mmrData MMRDataResponse
+	json.Unmarshal(body, &mmrData)
+
+	return MMRData{
+		CurrentRR: mmrData.Data.Current.RR,
+		RRChange:  mmrData.Data.Current.LastChange,
+		Tier:      mmrData.Data.Current.Tier.Name,
 	}
 }
