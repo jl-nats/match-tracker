@@ -15,6 +15,12 @@ import (
 	"github.com/joho/godotenv"
 )
 
+const (
+	WIN_COLOR  = 0x2eb387
+	LOSS_COLOR = 0xff2832
+	DRAW_COLOR = 0x8BACB5
+)
+
 var maps = map[string]string{"Sunset": "https://static.wikia.nocookie.net/valorant/images/5/5c/Loading_Screen_Sunset.png",
 	"Lotus":    "https://static.wikia.nocookie.net/valorant/images/d/d0/Loading_Screen_Lotus.png",
 	"Pearl":    "https://static.wikia.nocookie.net/valorant/images/a/af/Loading_Screen_Pearl.png",
@@ -45,30 +51,34 @@ func getRankEmoji(tier string) string {
 	return "<:" + stripSpaces(tier) + ":" + ranks[stripSpaces(tier)] + ">"
 }
 
-var WIN_COLOR = 0x2eb387
-var LOSS_COLOR = 0xff2832
-var DRAW_COLOR = 0x8BACB5
+func createTitleEmbedField(label string) EmbedField {
+	return EmbedField{
+		Name:   strings.Title(label) + " Team",
+		Value:  "",
+		Inline: false}
+}
+
+func createPlayerEmbedField(player Player, totalRounds int) EmbedField {
+	return EmbedField{
+		Name:   player.Name + "#```" + player.Tag + "```" + getRankEmoji(player.Tier.Name),
+		Value:  "```" + strconv.Itoa(player.Stats.Score/(totalRounds)) + "``` ```" + strconv.Itoa(player.Stats.Kills) + "-" + strconv.Itoa(player.Stats.Deaths) + "-" + strconv.Itoa(player.Stats.Assists) + "``````" + player.Agent.Name + "```",
+		Inline: true,
+	}
+}
 
 func CreateEmbedFields(team []Player, label string, totalRounds int) []EmbedField {
 	teamFields := []EmbedField{}
-	teamFields = append(teamFields, EmbedField{
-		Name:   strings.Title(label) + " Team",
-		Value:  "",
-		Inline: false})
+	teamFields = append(teamFields, createTitleEmbedField(label))
 	if totalRounds == 0 {
 		totalRounds = 1
 	}
 	for _, player := range team {
-		teamFields = append(teamFields, EmbedField{
-			Name:   player.Name + "#```" + player.Tag + "```" + getRankEmoji(player.Tier.Name),
-			Value:  "```" + strconv.Itoa(player.Stats.Score/(totalRounds)) + "``` ```" + strconv.Itoa(player.Stats.Kills) + "-" + strconv.Itoa(player.Stats.Deaths) + "-" + strconv.Itoa(player.Stats.Assists) + "``````" + player.Agent.Name + "```",
-			Inline: true,
-		})
+		teamFields = append(teamFields, createPlayerEmbedField(player, totalRounds))
 	}
 	return teamFields
 }
 
-func SeparateTeams(players []Player) ([]Player, []Player) {
+func separateAndSortTeams(players []Player) ([]Player, []Player) {
 	redTeam := []Player{}
 	blueTeam := []Player{}
 
@@ -80,6 +90,10 @@ func SeparateTeams(players []Player) ([]Player, []Player) {
 		}
 	}
 
+	sort.Slice(redTeam, LessFunc(redTeam))
+
+	sort.Slice(blueTeam, LessFunc(blueTeam))
+
 	return redTeam, blueTeam
 }
 
@@ -89,21 +103,21 @@ func LessFunc(team []Player) func(i, j int) bool {
 	}
 }
 
-func CreateEmbed(matchData MatchData, trackedPlayerData TrackedPlayerData, MMRData MMRData) Embed {
-	var trackedPlayer Player
-	for _, player := range matchData.Players {
+func findTrackedPlayer(players []Player, trackedPlayerData TrackedPlayerData) Player {
+	for _, player := range players {
 		if player.Name == trackedPlayerData.Name && player.Tag == trackedPlayerData.Tag {
-			trackedPlayer = player
+			return player
 		}
 	}
+	return Player{}
+}
+
+func CreateEmbed(matchData MatchData, trackedPlayerData TrackedPlayerData, MMRData MMRData) Embed {
+	trackedPlayer := findTrackedPlayer(matchData.Players, trackedPlayerData)
 
 	embedColor, roundsWon, roundsLost, gameOutcome := processMatchData(matchData, trackedPlayer)
 
-	redTeam, blueTeam := SeparateTeams(matchData.Players)
-
-	sort.Slice(redTeam, LessFunc(redTeam))
-
-	sort.Slice(blueTeam, LessFunc(blueTeam))
+	redTeam, blueTeam := separateAndSortTeams(matchData.Players)
 
 	embedFields := append(CreateEmbedFields(redTeam, "red", roundsWon+roundsLost), CreateEmbedFields(blueTeam, "blue", roundsWon+roundsLost)...)
 
@@ -232,8 +246,12 @@ func handleRes(res *http.Response) MatchDataResponse {
 	return matchDataResponse
 }
 
-func createUrl(playerData TrackedPlayerData) string {
+func createMatchAPIUrl(playerData TrackedPlayerData) string {
 	return "https://api.henrikdev.xyz/valorant/v4/matches/" + playerData.Region + "/" + playerData.Platform + "/" + playerData.Name + "/" + playerData.Tag + "?size=1&mode=competitive"
+}
+
+func createMMRAPIUrl(playerData TrackedPlayerData) string {
+	return "https://api.henrikdev.xyz/valorant/v3/mmr/" + playerData.Region + "/" + playerData.Platform + "/" + playerData.Name + "/" + playerData.Tag
 }
 
 func main() {
@@ -241,7 +259,7 @@ func main() {
 	log.Println("Loading environmental variables...")
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Println("Error loading .env file")
 	}
 	log.Println("Loading environmental variables...")
 	WEBHOOK_URL := os.Getenv("WEBHOOK_URL")
@@ -256,19 +274,35 @@ func main() {
 
 	client := &http.Client{}
 
-	apiUrl := createUrl(playerData)
+	matchReq := createMatchRequest(API_KEY, playerData)
+	mmrReq := createMMRRequest(API_KEY, playerData)
+	log.Println("Server Started")
 
-	matchReq, err := http.NewRequest("GET", apiUrl, nil)
+	beginTracking(client, matchReq, mmrReq, playerData, WEBHOOK_URL)
+}
 
+func createMatchRequest(API_KEY string, playerData TrackedPlayerData) *http.Request {
+	matchApiUrl := createMatchAPIUrl(playerData)
+	matchReq, err := http.NewRequest("GET", matchApiUrl, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	matchReq.Header.Add("Authorization", API_KEY)
+	return matchReq
+}
 
-	log.Println("Server Started")
+func createMMRRequest(API_KEY string, playerData TrackedPlayerData) *http.Request {
+	mmrApiUrl := createMMRAPIUrl(playerData)
+	mmrReq, err := http.NewRequest("GET", mmrApiUrl, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	mmrReq.Header.Add("Authorization", API_KEY)
+	return mmrReq
+}
+
+func beginTracking(client *http.Client, matchReq *http.Request, mmrReq *http.Request, playerData TrackedPlayerData, WEBHOOK_URL string) {
 	var lastMatchID string
-
 	for {
 		log.Println("Checking match data...")
 		matchData := getMatchData(client, matchReq)
@@ -278,12 +312,6 @@ func main() {
 		} else {
 			lastMatchID = matchData.Metadata.MatchID
 			log.Println("New match found. Looking up MMR...")
-			mmrApiUrl := "https://api.henrikdev.xyz/valorant/v3/mmr/" + playerData.Region + "/" + playerData.Platform + "/" + playerData.Name + "/" + playerData.Tag
-			mmrReq, err := http.NewRequest("GET", mmrApiUrl, nil)
-			if err != nil {
-				log.Fatal(err)
-			}
-			mmrReq.Header.Add("Authorization", API_KEY)
 			MMRData := getMMRData(client, mmrReq)
 			executeWebhook(WEBHOOK_URL, matchData, playerData, MMRData)
 		}
