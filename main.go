@@ -97,7 +97,7 @@ func CreateEmbed(matchData MatchData, trackedPlayerData TrackedPlayerData, MMRDa
 		}
 	}
 
-	embedColor, roundsWon, roundsLost, gameOutcome := newFunction(matchData, trackedPlayer)
+	embedColor, roundsWon, roundsLost, gameOutcome := processMatchData(matchData, trackedPlayer)
 
 	redTeam, blueTeam := SeparateTeams(matchData.Players)
 
@@ -277,7 +277,7 @@ func main() {
 			log.Println("No new match data found")
 		} else {
 			lastMatchID = matchData.Metadata.MatchID
-			log.Println("New match found. Executing webhook...")
+			log.Println("New match found. Looking up MMR...")
 			mmrApiUrl := "https://api.henrikdev.xyz/valorant/v3/mmr/" + playerData.Region + "/" + playerData.Platform + "/" + playerData.Name + "/" + playerData.Tag
 			mmrReq, err := http.NewRequest("GET", mmrApiUrl, nil)
 			if err != nil {
