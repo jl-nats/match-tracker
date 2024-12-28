@@ -27,6 +27,24 @@ var maps = map[string]string{"Sunset": "https://static.wikia.nocookie.net/valora
 	"Ascent":   "https://static.wikia.nocookie.net/valorant/images/e/e7/Loading_Screen_Ascent.png",
 	"Abyss":    "https://www.vpesports.com/wp-content/uploads/2024/06/Screenshot_4-19.png"}
 
+var ranks = map[string]string{"Iron1": "1264549482985558088", "Iron2": "1264549499263516692", "Iron3": "1264549509107552316",
+	"Bronze1": "1264549523188092938", "Bronze2": "1264549533682237555", "Bronze3": "1264549543236735076",
+	"Silver1": "1264549558583558237", "Silver2": "1264549575205847161", "Silver3": "1264549586333204561",
+	"Gold1": "1264549620369850368", "Gold2": "1264549633158418504", "Gold3": "1264549643375612016",
+	"Platinum1": "1264549655036039241", "Platinum2": "1264549665429258314", "Platinum3": "1264549676028399677",
+	"Diamond1": "1264549711839232031", "Diamond2": "1264549732379004950", "Diamond3": "1264549748329807872",
+	"Ascendant1": "1264549759017029743", "Ascendant2": "1264549768433107045", "Ascendant3": "1264549778084073514",
+	"Immortal1": "1264549813173616700", "Immortal2": "1264549825878163517", "Immortal3": "1264549838956003412",
+	"Radiant": "1264549852940075078", "Unrated": "1264599232631799852"}
+
+func stripSpaces(s string) string {
+	return strings.ReplaceAll(s, " ", "")
+}
+
+func getRankEmoji(tier string) string {
+	return "<:" + stripSpaces(tier) + ":" + ranks[stripSpaces(tier)] + ">"
+}
+
 var WIN_COLOR = 0x2eb387
 var LOSS_COLOR = 0xff2832
 var DRAW_COLOR = 0x8BACB5
@@ -37,10 +55,13 @@ func CreateEmbedFields(team []Player, label string, totalRounds int) []EmbedFiel
 		Name:   strings.Title(label) + " Team",
 		Value:  "",
 		Inline: false})
+	if totalRounds == 0 {
+		totalRounds = 1
+	}
 	for _, player := range team {
 		teamFields = append(teamFields, EmbedField{
-			Name:   player.Name + "#```" + player.Tag + "```",
-			Value:  "```" + strconv.Itoa(player.Stats.Score/(totalRounds)) + "|" + strconv.Itoa(player.Stats.Kills) + "-" + strconv.Itoa(player.Stats.Deaths) + "-" + strconv.Itoa(player.Stats.Assists) + "\n" + player.Agent.Name + "\n" + player.Tier.Name + "```",
+			Name:   player.Name + "#```" + player.Tag + "```" + getRankEmoji(player.Tier.Name),
+			Value:  "```" + strconv.Itoa(player.Stats.Score/(totalRounds)) + "``` ```" + strconv.Itoa(player.Stats.Kills) + "-" + strconv.Itoa(player.Stats.Deaths) + "-" + strconv.Itoa(player.Stats.Assists) + "``````" + player.Agent.Name + "```",
 			Inline: true,
 		})
 	}
@@ -88,20 +109,32 @@ func CreateEmbed(matchData MatchData, trackedPlayerData TrackedPlayerData, MMRDa
 
 	embed := Embed{
 		Title:       "🚨   NEW GAME " + trackedPlayerData.Name + "#" + trackedPlayerData.Tag + "   🚨",
-		Description: "**" + matchData.Metadata.Map.Name + "**" + " -- " + gameOutcome + " -- **" + strconv.Itoa(roundsWon) + " : " + strconv.Itoa(roundsLost) + "**\n" + MMRData.Tier + " " + strconv.Itoa(MMRData.CurrentRR) + "RR (" + sign(MMRData.RRChange) + strconv.Itoa(MMRData.RRChange) + ")" + "\n",
+		Description: "**" + matchData.Metadata.Map.Name + "**" + " -- " + gameOutcome + " -- **" + strconv.Itoa(roundsWon) + " : " + strconv.Itoa(roundsLost) + "**\n" + MMRData.Tier + " " + strconv.Itoa(MMRData.CurrentRR) + "RR (" + sign(MMRData.RRChange) + strconv.Itoa(MMRData.RRChange) + ")" + "\n\n" + getProgressBar(MMRData.CurrentRR),
 		Fields:      embedFields,
 		URL:         "https://tracker.gg/valorant/match/" + matchData.Metadata.MatchID,
 		Color:       embedColor,
 		Timestamp:   matchData.Metadata.StartedAt,
 		Image: EmbedImage{
 			URL:   maps[matchData.Metadata.Map.Name],
-			Width: 500,
+			Width: 1000,
 		},
 		Footer: EmbedFooter{
 			Text: matchData.Metadata.MatchID,
 		},
 	}
 	return embed
+}
+
+func getProgressBar(rating int) string {
+	greenSquares := int((float64(rating) / 550) * 22)
+	redSquares := 22 - greenSquares
+	progressBar := []rune(strings.Repeat("🟩", greenSquares) + strings.Repeat("🟥", redSquares))
+	progressBarRanks := append(progressBar[:3], []rune(getRankEmoji("Immortal2"))...)
+	progressBarRanks = append(progressBarRanks, progressBar[4:7]...)
+	progressBarRanks = append(progressBarRanks, []rune(getRankEmoji("Immortal3"))...)
+	progressBarRanks = append(progressBarRanks, progressBar[8:21]...)
+	progressBarRanks = append(progressBarRanks, []rune(getRankEmoji("Radiant"))...)
+	return string(progressBarRanks)
 }
 
 func sign(x int) string {
@@ -111,7 +144,7 @@ func sign(x int) string {
 	return "+"
 }
 
-func newFunction(matchData MatchData, trackedPlayer Player) (int, int, int, string) {
+func processMatchData(matchData MatchData, trackedPlayer Player) (int, int, int, string) {
 	embedColor := 0
 	gameState := 0
 	roundsWon := 0
@@ -200,7 +233,7 @@ func handleRes(res *http.Response) MatchDataResponse {
 }
 
 func createUrl(playerData TrackedPlayerData) string {
-	return "https://api.henrikdev.xyz/valorant/v4/matches/" + playerData.Region + "/" + playerData.Platform + "/" + playerData.Name + "/" + playerData.Tag + "?size=1?mode=competitive"
+	return "https://api.henrikdev.xyz/valorant/v4/matches/" + playerData.Region + "/" + playerData.Platform + "/" + playerData.Name + "/" + playerData.Tag + "?size=1&mode=competitive"
 }
 
 func main() {
