@@ -112,6 +112,13 @@ func findTrackedPlayer(players []Player, trackedPlayerData TrackedPlayerData) Pl
 	return Player{}
 }
 
+func getTimeUntilDeadline() string {
+	now := time.Now()
+	deadline := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
+	timeUntilDeadline := deadline.Sub(now)
+	return timeUntilDeadline.Truncate(time.Second).String()
+}
+
 func CreateEmbed(matchData MatchData, trackedPlayerData TrackedPlayerData, MMRData MMRData) Embed {
 	trackedPlayer := findTrackedPlayer(matchData.Players, trackedPlayerData)
 
@@ -121,9 +128,11 @@ func CreateEmbed(matchData MatchData, trackedPlayerData TrackedPlayerData, MMRDa
 
 	embedFields := append(CreateEmbedFields(redTeam, "red", roundsWon+roundsLost), CreateEmbedFields(blueTeam, "blue", roundsWon+roundsLost)...)
 
+	timeUntilDeadline := getTimeUntilDeadline()
+
 	embed := Embed{
 		Title:       "🚨   NEW GAME " + trackedPlayerData.Name + "#" + trackedPlayerData.Tag + "   🚨",
-		Description: "**" + matchData.Metadata.Map.Name + "**" + " -- " + gameOutcome + " -- **" + strconv.Itoa(roundsWon) + " : " + strconv.Itoa(roundsLost) + "**\n" + MMRData.Tier + " " + strconv.Itoa(MMRData.CurrentRR) + "RR (" + sign(MMRData.RRChange) + strconv.Itoa(MMRData.RRChange) + ")" + "\n\n" + getProgressBar(MMRData.CurrentRR),
+		Description: "**" + matchData.Metadata.Map.Name + "**" + " -- " + gameOutcome + " -- **" + strconv.Itoa(roundsWon) + " : " + strconv.Itoa(roundsLost) + "**\n" + MMRData.Tier + " " + strconv.Itoa(MMRData.CurrentRR) + "RR (" + sign(MMRData.RRChange) + strconv.Itoa(MMRData.RRChange) + ")" + "\n\n" + getProgressBar(MMRData.CurrentRR) + "\n\n" + "Time left: " + timeUntilDeadline + " until Jan 1!",
 		Fields:      embedFields,
 		URL:         "https://tracker.gg/valorant/match/" + matchData.Metadata.MatchID,
 		Color:       embedColor,
@@ -142,13 +151,13 @@ func CreateEmbed(matchData MatchData, trackedPlayerData TrackedPlayerData, MMRDa
 func getProgressBar(rating int) string {
 	greenSquares := int((float64(rating) / 550) * 22)
 	redSquares := 22 - greenSquares
-	progressBar := []rune(strings.Repeat("🟩", greenSquares) + strings.Repeat("🟥", redSquares))
-	progressBarRanks := append(progressBar[:3], []rune(getRankEmoji("Immortal2"))...)
+	progressBar := []rune(getRankEmoji("Immortal1") + "[" + strings.Repeat("▬", greenSquares-1) + ":radio_button:" + strings.Repeat("▬", redSquares) + "]" + getRankEmoji("Radiant"))
+	/*progressBarRanks := append(progressBar[:3], []rune(getRankEmoji("Immortal2"))...)
 	progressBarRanks = append(progressBarRanks, progressBar[4:7]...)
 	progressBarRanks = append(progressBarRanks, []rune(getRankEmoji("Immortal3"))...)
 	progressBarRanks = append(progressBarRanks, progressBar[8:21]...)
-	progressBarRanks = append(progressBarRanks, []rune(getRankEmoji("Radiant"))...)
-	return string(progressBarRanks)
+	progressBarRanks = append(progressBarRanks, []rune(getRankEmoji("Radiant"))...)*/
+	return string(progressBar)
 }
 
 func sign(x int) string {
