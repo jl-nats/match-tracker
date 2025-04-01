@@ -223,20 +223,22 @@ func executeWebhook(webhookURL string, matchData MatchData, trackedPlayerData Tr
 	defer res.Body.Close()
 }
 
-func getMatchData(client *http.Client, req *http.Request) MatchData {
+func getMatchData(client *http.Client, req *http.Request) *MatchData {
 	res, err := client.Do(req)
 	if err != nil {
 		log.Println("Error making HD API request:", err)
+		return nil
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
 		log.Println("Unexpected HD API response status:", res.Status)
+		return nil
 	}
 
 	matchDataResponse := handleRes(res)
 
-	return matchDataResponse.MatchData[0]
+	return &matchDataResponse.MatchData[0]
 }
 
 func handleRes(res *http.Response) MatchDataResponse {
@@ -315,14 +317,18 @@ func beginTracking(client *http.Client, matchReq *http.Request, mmrReq *http.Req
 	for {
 		log.Println("Checking match data...")
 		matchData := getMatchData(client, matchReq)
+		if matchData != nil {
+			if matchData.Metadata.MatchID == lastMatchID {
+				log.Println("No new match data found")
+			} else {
+				lastMatchID = matchData.Metadata.MatchID
+				log.Println("New match found. Looking up MMR...")
+				MMRData := getMMRData(client, mmrReq)
+				if MMRData != nil {
+					executeWebhook(WEBHOOK_URL, *matchData, playerData, *MMRData)
+				}
 
-		if matchData.Metadata.MatchID == lastMatchID {
-			log.Println("No new match data found")
-		} else {
-			lastMatchID = matchData.Metadata.MatchID
-			log.Println("New match found. Looking up MMR...")
-			MMRData := getMMRData(client, mmrReq)
-			executeWebhook(WEBHOOK_URL, matchData, playerData, MMRData)
+			}
 		}
 
 		time.Sleep(10 * time.Second)
@@ -330,22 +336,24 @@ func beginTracking(client *http.Client, matchReq *http.Request, mmrReq *http.Req
 	}
 }
 
-func getMMRData(client *http.Client, req *http.Request) MMRData {
+func getMMRData(client *http.Client, req *http.Request) *MMRData {
 	res, err := client.Do(req)
 	if err != nil {
 		log.Println("Error making HD API request:", err)
+		return nil
 	}
 	defer res.Body.Close()
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		log.Println("Error reading HD API response body:", err)
+		return nil
 	}
 
 	var mmrData MMRDataResponse
 	json.Unmarshal(body, &mmrData)
 
-	return MMRData{
+	return &MMRData{
 		CurrentRR: mmrData.Data.Current.RR,
 		RRChange:  mmrData.Data.Current.LastChange,
 		Tier:      mmrData.Data.Current.Tier.Name,
