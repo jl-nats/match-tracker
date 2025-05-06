@@ -149,9 +149,16 @@ func CreateEmbed(matchData MatchData, trackedPlayerData TrackedPlayerData, MMRDa
 }
 
 func getProgressBar(rating int) string {
-	greenSquares := int((float64(rating) / 550) * 22)
+	greenSquares := int((float64(rating)/550)*22) - 1
 	redSquares := 22 - greenSquares
-	progressBar := []rune(getRankEmoji("Immortal1") + "[" + strings.Repeat("▬", greenSquares-1) + ":radio_button:" + strings.Repeat("▬", redSquares) + "]" + getRankEmoji("Radiant"))
+	if greenSquares < 0 {
+		greenSquares = 0
+	}
+	if redSquares < 0 {
+		redSquares = 0
+	}
+
+	progressBar := []rune(getRankEmoji("Immortal1") + "[" + strings.Repeat("▬", greenSquares) + ":radio_button:" + strings.Repeat("▬", redSquares) + "]" + getRankEmoji("Radiant"))
 	/*progressBarRanks := append(progressBar[:3], []rune(getRankEmoji("Immortal2"))...)
 	progressBarRanks = append(progressBarRanks, progressBar[4:7]...)
 	progressBarRanks = append(progressBarRanks, []rune(getRankEmoji("Immortal3"))...)
