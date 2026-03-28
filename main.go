@@ -112,9 +112,8 @@ func findTrackedPlayer(players []Player, trackedPlayerData TrackedPlayerData) Pl
 	return Player{}
 }
 
-func getTimeUntilDeadline() string {
+func getTimeUntilDeadline(deadline time.Time) string {
 	now := time.Now()
-	deadline := time.Date(2025, time.January, 1, 0, 0, 0, 0, time.UTC)
 	timeUntilDeadline := deadline.Sub(now)
 	return timeUntilDeadline.Truncate(time.Second).String()
 }
@@ -128,15 +127,23 @@ func CreateEmbed(matchData MatchData, trackedPlayerData TrackedPlayerData, MMRDa
 
 	embedFields := append(CreateEmbedFields(redTeam, "red", roundsWon+roundsLost), CreateEmbedFields(blueTeam, "blue", roundsWon+roundsLost)...)
 
-	timeUntilDeadline := getTimeUntilDeadline()
+	deadline_1 := time.Date(2026, time.November, 19, 0, 0, 0, 0, time.UTC)
+	deadline_2 := time.Date(2028, time.January, 1, 0, 0, 0, 0, time.UTC)
+	timeUntilDeadline1 := getTimeUntilDeadline(deadline_1)
+	timeUntilDeadline2 := getTimeUntilDeadline(deadline_2)
 
 	embed := Embed{
-		Title:       "🚨   NEW GAME " + trackedPlayerData.Name + "#" + trackedPlayerData.Tag + "   🚨",
-		Description: "**" + matchData.Metadata.Map.Name + "**" + " -- " + gameOutcome + " -- **" + strconv.Itoa(roundsWon) + " : " + strconv.Itoa(roundsLost) + "**\n" + MMRData.Tier + " " + strconv.Itoa(MMRData.CurrentRR) + "RR (" + sign(MMRData.RRChange) + strconv.Itoa(MMRData.RRChange) + ")" + "\n\n" + getProgressBar(MMRData.CurrentRR) + "\n\n" + "Time left: " + timeUntilDeadline + " until Jan 1!",
-		Fields:      embedFields,
-		URL:         "https://tracker.gg/valorant/match/" + matchData.Metadata.MatchID,
-		Color:       embedColor,
-		Timestamp:   matchData.Metadata.StartedAt,
+		Title: "🚨   NEW GAME " + trackedPlayerData.Name + "#" + trackedPlayerData.Tag + "   🚨",
+		Description: "**" + matchData.Metadata.Map.Name + "**" + " -- " + gameOutcome + " -- **" + strconv.Itoa(roundsWon) + " : " + strconv.Itoa(roundsLost) + "**\n" +
+			MMRData.Tier + " " + strconv.Itoa(MMRData.CurrentRR) + "RR (" + sign(MMRData.RRChange) + strconv.Itoa(MMRData.RRChange) + ")" + "\n\n" +
+			getProgressBar(MMRData.CurrentRR) + "\n\n" +
+			timeUntilDeadline1 + " until GTA VI | " +
+			timeUntilDeadline2 + " until 2028\n",
+
+		Fields:    embedFields,
+		URL:       "https://tracker.gg/valorant/match/" + matchData.Metadata.MatchID,
+		Color:     embedColor,
+		Timestamp: matchData.Metadata.StartedAt,
 		Image: EmbedImage{
 			URL:   maps[matchData.Metadata.Map.Name],
 			Width: 1000,
@@ -149,8 +156,8 @@ func CreateEmbed(matchData MatchData, trackedPlayerData TrackedPlayerData, MMRDa
 }
 
 func getProgressBar(rating int) string {
-	greenSquares := int((float64(rating)/550)*22) - 1
-	redSquares := 22 - greenSquares
+	greenSquares := int((float64(rating) / 300) * 20)
+	redSquares := 20 - greenSquares
 	if greenSquares < 0 {
 		greenSquares = 0
 	}
